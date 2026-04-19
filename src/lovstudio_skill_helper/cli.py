@@ -80,23 +80,29 @@ def cmd_heartbeat(args) -> int:
 
 def cmd_status(args) -> int:
     lic = config.load_license()
-    if not lic:
-        print("not activated.")
-        return 0
 
     if args.json:
+        if not lic:
+            print(json.dumps({"activated": False}, indent=2))
+            return 0
         redacted = {**lic, "license_key": lic["license_key"][:8] + "…"}
         print(json.dumps(redacted, indent=2, ensure_ascii=False))
         return 0
 
-    # License header (defer "entitled X/Y skills" until catalog is known).
-    key_short = lic["license_key"][:8] + "…"
-    entitled_names: set[str] = set(lic.get("entitled_skills") or [])
-    print(f"license_key       {key_short}")
-    print(f"device_id         {lic.get('device_id', '—')}")
-    print(f"user_id           {lic.get('user_id', '—')}")
-    print(f"expires_at        {lic.get('expires_at') or '— (no expiry)'}")
-    print(f"last_heartbeat_at {lic.get('last_heartbeat_at') or '—'}")
+    # License header. Free skills work without activation, so we still render
+    # the catalog; we just mark paid skills as "not yet entitled".
+    entitled_names: set[str] = set(lic.get("entitled_skills") or []) if lic else set()
+    if lic:
+        key_short = lic["license_key"][:8] + "…"
+        print(f"license_key       {key_short}")
+        print(f"device_id         {lic.get('device_id', '—')}")
+        print(f"user_id           {lic.get('user_id', '—')}")
+        print(f"expires_at        {lic.get('expires_at') or '— (no expiry)'}")
+        print(f"last_heartbeat_at {lic.get('last_heartbeat_at') or '—'}")
+    else:
+        print("license_key       — (not activated; free skills still available)")
+        print("                    activate a paid license with:")
+        print("                    lovstudio-skill-helper activate lk-<your-key>")
 
     # Fetch catalog; fall back to flat list if offline.
     try:

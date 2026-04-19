@@ -89,25 +89,34 @@ def cmd_status(args) -> int:
         print(json.dumps(redacted, indent=2, ensure_ascii=False))
         return 0
 
-    # License header.
+    # License header (defer "entitled X/Y skills" until catalog is known).
     key_short = lic["license_key"][:8] + "…"
-    entitled: set[str] = set(lic.get("entitled_skills") or [])
+    entitled_names: set[str] = set(lic.get("entitled_skills") or [])
     print(f"license_key       {key_short}")
     print(f"device_id         {lic.get('device_id', '—')}")
     print(f"user_id           {lic.get('user_id', '—')}")
     print(f"expires_at        {lic.get('expires_at') or '— (no expiry)'}")
     print(f"last_heartbeat_at {lic.get('last_heartbeat_at') or '—'}")
-    print(f"entitled          {len(entitled)} skills")
-    print()
 
     # Fetch catalog; fall back to flat list if offline.
     try:
         catalog = api.list_catalog()
     except api.ApiError as e:
+        print(f"entitled          {len(entitled_names)} skills")
+        print()
         print(f"(catalog fetch failed — {e.message}; showing flat entitled list)", file=sys.stderr)
-        for name in sorted(entitled):
+        for name in sorted(entitled_names):
             print(f"  [x] {name} (entitled)")
         return 0
+
+    # A skill counts as "entitled" if it's free OR explicitly in the license.
+    def is_entitled(row: dict) -> bool:
+        return (not row.get("paid")) or row["name"] in entitled_names
+
+    total = len(catalog)
+    granted = sum(1 for row in catalog if is_entitled(row))
+    print(f"entitled          {granted}/{total} skills")
+    print()
 
     # Group by category.
     by_cat: dict[str, list[dict]] = {}
@@ -117,7 +126,7 @@ def cmd_status(args) -> int:
 
     known_names = {row["name"] for row in catalog}
     # Entitled-but-not-in-catalog: show under a synthetic bucket so they aren't lost.
-    orphans = sorted(entitled - known_names)
+    orphans = sorted(entitled_names - known_names)
     if orphans:
         by_cat.setdefault("(other)", []).extend(
             {"name": n, "paid": True} for n in orphans
@@ -125,15 +134,14 @@ def cmd_status(args) -> int:
 
     for cat in sorted(by_cat):
         rows = sorted(by_cat[cat], key=lambda r: r["name"])
-        n_free = sum(1 for r in rows if not r.get("paid"))
-        n_paid = sum(1 for r in rows if r.get("paid"))
-        print(f"{cat}  {n_free} free, {n_paid} paid")
+        cat_granted = sum(1 for r in rows if is_entitled(r))
+        print(f"{cat}  {cat_granted}/{len(rows)} entitled")
         for r in rows:
             name = r["name"]
             paid = r.get("paid", False)
             if not paid:
                 print(f"  [x] {name} (free)")
-            elif name in entitled:
+            elif name in entitled_names:
                 print(f"  [x] {name} (entitled)")
             else:
                 print(f"  [ ] {name} (not yet entitled)")

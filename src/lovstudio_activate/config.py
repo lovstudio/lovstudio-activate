@@ -23,14 +23,15 @@ CONFIG_DIR = Path(os.environ.get("LOVSTUDIO_HOME", Path.home() / ".lovstudio"))
 LICENSE_FILE = CONFIG_DIR / "license.yml"
 
 # Default Edge Function endpoint. Overridable via env for dev/test.
-DEFAULT_API_BASE = "https://cssuvwfoyevryibnipqf.supabase.co/functions/v1"
+# Points at the lovstudio.ai web project (merged license system).
+DEFAULT_API_BASE = "https://nouchjcfeoobplxkwasg.supabase.co/functions/v1"
 # Default anon key — Edge Functions require it for JWT gate, even though
 # we enforce real auth via HMAC inside the function body.
 DEFAULT_ANON_KEY = (
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
-    "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNzc3V2d2ZveWV2cnlpYm5pcHFmIiwicm9sZSI6"
-    "ImFub24iLCJpYXQiOjE3NzY1MzA4MzgsImV4cCI6MjA5MjEwNjgzOH0."
-    "RfzHDCYdrfrAAcdurAAiD_SaL_tkf28bdTWnD4T9zqg"
+    "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5vdWNoamNmZW9vYnBseGt3YXNnIiwicm9sZSI6"
+    "ImFub24iLCJpYXQiOjE3NjYxNjI1OTMsImV4cCI6MjA4MTczODU5M30."
+    "P3A_AoAjp0EXIafeBBeqp972h_lO7oXjbKgu0OdMsjA"
 )
 
 

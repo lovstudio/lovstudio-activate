@@ -273,7 +273,14 @@ def cmd_exec(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from . import __version__
+
     p = argparse.ArgumentParser(prog="lovstudio-skill-helper")
+    p.add_argument(
+        "-V", "--version",
+        action="version",
+        version=f"lovstudio-skill-helper {__version__}",
+    )
     sub = p.add_subparsers(dest="cmd", required=True)
 
     p_activate = sub.add_parser("activate", help="activate a license key")

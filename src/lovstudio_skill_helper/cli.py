@@ -1,4 +1,4 @@
-"""lovstudio CLI — activate, heartbeat, decrypt, exec.
+"""lovstudio-skill-helper CLI — activate, heartbeat, decrypt, exec.
 
 Trust model:
   - ~/.lovstudio/license.yml holds license_key (chmod 600). Anyone with this
@@ -27,7 +27,7 @@ _BUY_HINT = "  Buy a license key at https://lovstudio.ai (or follow the 手工�
 def _require_license() -> dict:
     lic = config.load_license()
     if not lic:
-        print("error: not activated. run `lovstudio activate <key>` first.", file=sys.stderr)
+        print("error: not activated. run `lovstudio-skill-helper activate <key>` first.", file=sys.stderr)
         print(_BUY_HINT, file=sys.stderr)
         sys.exit(2)
     return lic
@@ -229,7 +229,7 @@ def cmd_exec(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="lovstudio")
+    p = argparse.ArgumentParser(prog="lovstudio-skill-helper")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     p_activate = sub.add_parser("activate", help="activate a license key")

@@ -1,34 +1,34 @@
-# lovstudio
+# lovstudio-skill-helper
 
-Lovstudio CLI — activate and run paid Lovstudio skills. Decryption keys are fetched per-invocation from the license server and live only in process memory; they never touch disk.
+CLI helper for Lovstudio paid skills — activate your license and transparently decrypt/run protected skills locally. Decryption keys are fetched per-invocation from the license server and live only in process memory; they never touch disk.
 
 ## Install
 
 The canonical way is via [`uv`](https://docs.astral.sh/uv/) — no install step needed, runs on first use:
 
 ```bash
-uvx lovstudio activate <license-key>
+uvx lovstudio-skill-helper activate <license-key>
 ```
 
 Or install it persistently:
 
 ```bash
-pipx install lovstudio
+pipx install lovstudio-skill-helper
 ```
 
 ## Usage
 
 ```bash
 # one-time per device
-lovstudio activate <license-key>
+lovstudio-skill-helper activate <license-key>
 
 # then any paid skill placeholder SKILL.md will call:
-lovstudio decrypt <skill-name>       # print plaintext SKILL.md to stdout
-lovstudio exec <skill-name> <script> # run an encrypted script once
+lovstudio-skill-helper decrypt <skill-name>       # print plaintext SKILL.md to stdout
+lovstudio-skill-helper exec <skill-name> <script> # run an encrypted script once
 
-lovstudio status           # show current activation
-lovstudio heartbeat        # refresh last-seen
-lovstudio deactivate       # wipe local license
+lovstudio-skill-helper status           # show current activation
+lovstudio-skill-helper heartbeat        # refresh last-seen
+lovstudio-skill-helper deactivate       # wipe local license
 ```
 
 ## How it works

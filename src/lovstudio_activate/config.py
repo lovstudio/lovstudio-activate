@@ -1,12 +1,11 @@
 """On-disk layout for activated state.
 
 ~/.lovstudio/
-├── license.yml                    # license_key, device_id, activated_at, expires_at,
-│                                  # last_heartbeat_at, entitled_skills
-└── brand_skills/<skill-name>/     # ciphertext installed from lovstudio/skills repo
-    ├── MANIFEST.enc.json
-    ├── SKILL.md.enc
-    └── scripts/*.enc
+└── license.yml                    # license_key, device_id, activated_at, expires_at,
+                                   # last_heartbeat_at, entitled_skills
+
+Encrypted skill bundles live under ~/.claude/skills/<name>/ (or the
+`lovstudio-<name>/` variant), placed there by `npx skills add ...`.
 
 Decryption keys are NEVER persisted here. They live in the running CLI's
 memory for the duration of one `decrypt` or `exec` invocation, then die.
@@ -22,7 +21,6 @@ import yaml
 
 CONFIG_DIR = Path(os.environ.get("LOVSTUDIO_HOME", Path.home() / ".lovstudio"))
 LICENSE_FILE = CONFIG_DIR / "license.yml"
-BRAND_SKILLS_DIR = CONFIG_DIR / "brand_skills"
 
 # Default Edge Function endpoint. Overridable via env for dev/test.
 DEFAULT_API_BASE = "https://cssuvwfoyevryibnipqf.supabase.co/functions/v1"
@@ -79,13 +77,11 @@ def device_info() -> dict:
 def skill_dir_candidates(skill_name: str) -> list[Path]:
     """Search candidates for an encrypted skill bundle, in priority order.
 
-    1. ~/.lovstudio/brand_skills/<name>/       ← explicit install (lovstudio-activate manual)
-    2. ~/.claude/skills/<name>/                ← `npx skills add` with bare name
-    3. ~/.claude/skills/lovstudio-<name>/      ← `npx skills add` with namespaced name
+    1. ~/.claude/skills/<name>/                ← `npx skills add` with bare name
+    2. ~/.claude/skills/lovstudio-<name>/      ← `npx skills add` with namespaced name
                                                   (free skills + paid skills both land here)
     """
     return [
-        BRAND_SKILLS_DIR / skill_name,
         Path.home() / ".claude" / "skills" / skill_name,
         Path.home() / ".claude" / "skills" / f"lovstudio-{skill_name}",
     ]

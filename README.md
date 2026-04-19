@@ -25,7 +25,7 @@ lovstudio-activate deactivate       # wipe local license
 
 ## How it works
 
-Paid skills ship as AES-256-GCM ciphertext under `~/.lovstudio/brand_skills/<name>/` (or `~/.claude/skills/<name>/` when installed via `npx skills add lovstudio/skills`). Each call to `decrypt` / `exec`:
+Paid skills ship as AES-256-GCM ciphertext under `~/.claude/skills/<name>/` (or `~/.claude/skills/lovstudio-<name>/`), placed there by `npx skills add ...`. Each call to `decrypt` / `exec`:
 
 1. Signs an HMAC proof with your license key (key itself never leaves the device).
 2. Hits the Lovstudio license server, which verifies the proof, checks entitlement, and returns a per-skill-version AES key.

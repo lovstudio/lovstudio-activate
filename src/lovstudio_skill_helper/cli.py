@@ -97,7 +97,7 @@ def cmd_status(args) -> int:
     print(f"user_id           {lic.get('user_id', '—')}")
     print(f"expires_at        {lic.get('expires_at') or '— (no expiry)'}")
     print(f"last_heartbeat_at {lic.get('last_heartbeat_at') or '—'}")
-    print(f"entitled          {len(entitled)} skill(s)")
+    print(f"entitled          {len(entitled)} skills")
     print()
 
     # Fetch catalog; fall back to flat list if offline.
@@ -106,10 +106,10 @@ def cmd_status(args) -> int:
     except api.ApiError as e:
         print(f"(catalog fetch failed — {e.message}; showing flat entitled list)", file=sys.stderr)
         for name in sorted(entitled):
-            print(f"  [x] {name}")
+            print(f"  [x] {name} (entitled)")
         return 0
 
-    # Group by category. `paid` flag tells user whether a skill requires a license at all.
+    # Group by category.
     by_cat: dict[str, list[dict]] = {}
     for row in catalog:
         cat = row.get("category") or "(uncategorized)"
@@ -119,25 +119,24 @@ def cmd_status(args) -> int:
     # Entitled-but-not-in-catalog: show under a synthetic bucket so they aren't lost.
     orphans = sorted(entitled - known_names)
     if orphans:
-        by_cat.setdefault("(other)", []).extend({"name": n, "paid": True} for n in orphans)
+        by_cat.setdefault("(other)", []).extend(
+            {"name": n, "paid": True} for n in orphans
+        )
 
     for cat in sorted(by_cat):
         rows = sorted(by_cat[cat], key=lambda r: r["name"])
-        granted = sum(1 for r in rows if r["name"] in entitled)
-        paid_count = sum(1 for r in rows if r.get("paid"))
-        print(f"{cat}  ({granted}/{paid_count} paid entitled, {len(rows)} total)")
+        n_free = sum(1 for r in rows if not r.get("paid"))
+        n_paid = sum(1 for r in rows if r.get("paid"))
+        print(f"{cat}  {n_free} free, {n_paid} paid")
         for r in rows:
             name = r["name"]
-            has = name in entitled
             paid = r.get("paid", False)
-            if has:
-                mark = "[x]"
-            elif paid:
-                mark = "[ ]"
+            if not paid:
+                print(f"  [x] {name} (free)")
+            elif name in entitled:
+                print(f"  [x] {name} (entitled)")
             else:
-                mark = "  ·"  # free skill, no entitlement needed
-            suffix = "" if paid else "  (free)"
-            print(f"  {mark} {name}{suffix}")
+                print(f"  [ ] {name} (not yet entitled)")
         print()
 
     return 0

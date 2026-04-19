@@ -110,3 +110,44 @@ def skill_dir(skill_name: str) -> Path:
         if (c / "MANIFEST.enc.json").exists():
             return c
     return skill_dir_candidates(skill_name)[0]
+
+
+def installed_skills() -> list[str]:
+    """List names of locally-installed encrypted skills (any dir under
+    ~/.claude/skills containing MANIFEST.enc.json). Strips the `lovstudio-`
+    prefix so the user sees the canonical name.
+    """
+    root = Path.home() / ".claude" / "skills"
+    if not root.is_dir():
+        return []
+    names: set[str] = set()
+    for child in root.iterdir():
+        if not child.is_dir():
+            continue
+        if not (child / "MANIFEST.enc.json").exists():
+            continue
+        name = child.name
+        if name.startswith("lovstudio-"):
+            name = name[len("lovstudio-"):]
+        names.add(name)
+    return sorted(names)
+
+
+def list_skill_files(skill_name: str) -> list[str]:
+    """List relative paths inside an installed skill's MANIFEST. Empty list on
+    any error — this is only used for shell completion, never hard-fails.
+    """
+    import json
+
+    d = skill_dir(skill_name)
+    manifest_path = d / "MANIFEST.enc.json"
+    if not manifest_path.exists():
+        return []
+    try:
+        data = json.loads(manifest_path.read_text())
+    except Exception:
+        return []
+    files = data.get("files")
+    if not isinstance(files, dict):
+        return []
+    return sorted(files.keys())

@@ -17,7 +17,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from . import api, config
+from . import api, completion, config
 from .crypto import SkillManifest, decrypt_file
 
 
@@ -262,6 +262,31 @@ def main(argv: list[str] | None = None) -> int:
     p_exec.add_argument("script_path", help="relative path inside the skill, e.g. scripts/foo.py")
     p_exec.add_argument("script_args", nargs=argparse.REMAINDER)
     p_exec.set_defaults(func=cmd_exec)
+
+    p_comp = sub.add_parser(
+        "completion",
+        help="install or print shell completion (bash, zsh)",
+    )
+    p_comp.add_argument(
+        "completion_cmd",
+        choices=["install", "bash", "zsh"],
+        help="`install` to write to rc file; `bash`/`zsh` to print the script to stdout",
+    )
+    p_comp.add_argument(
+        "shell",
+        nargs="?",
+        choices=["bash", "zsh"],
+        help="required with `install` if $SHELL can't be auto-detected",
+    )
+    p_comp.set_defaults(func=completion.cmd_completion)
+
+    # Hidden helpers used by the completion scripts themselves.
+    p_cs = sub.add_parser("_complete-skills", help=argparse.SUPPRESS)
+    p_cs.set_defaults(func=completion.cmd_complete_skills)
+
+    p_csf = sub.add_parser("_complete-skill-files", help=argparse.SUPPRESS)
+    p_csf.add_argument("skill_name")
+    p_csf.set_defaults(func=completion.cmd_complete_skill_files)
 
     args = p.parse_args(argv)
     return args.func(args)

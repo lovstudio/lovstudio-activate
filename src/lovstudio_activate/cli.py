@@ -34,9 +34,11 @@ def _require_license() -> dict:
 
 
 def cmd_activate(args) -> int:
-    license_key = args.key.strip().lower()
+    raw = args.key.strip().lower()
+    # Accept the human-friendly "lk-" prefix; the wire protocol uses raw hex.
+    license_key = raw[3:] if raw.startswith("lk-") else raw
     if len(license_key) != 64 or not all(c in "0123456789abcdef" for c in license_key):
-        print("error: license key must be 64 hex chars.", file=sys.stderr)
+        print("error: license key must be 64 hex chars (with optional 'lk-' prefix).", file=sys.stderr)
         return 2
 
     existing = config.load_license() or {}
@@ -176,7 +178,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     p_activate = sub.add_parser("activate", help="activate a license key")
-    p_activate.add_argument("key", help="license key (64 hex chars)")
+    p_activate.add_argument("key", help="license key (e.g. lk-<64 hex chars>)")
     p_activate.set_defaults(func=cmd_activate)
 
     p_hb = sub.add_parser("heartbeat", help="send heartbeat to refresh license")

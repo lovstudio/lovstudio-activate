@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "lovstudio-activate"
-version = "0.1.2"
-description = "Activate and run paid Lovstudio skills locally. Decryption keys never touch disk."
+name = "lovstudio"
+version = "0.2.0"
+description = "Lovstudio CLI — activate and run paid Lovstudio skills locally. Decryption keys never touch disk."
 requires-python = ">=3.9"
 dependencies = [
   "cryptography>=42",
@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-lovstudio-activate = "lovstudio_activate.cli:main"
+lovstudio = "lovstudio.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/lovstudio_activate"]
+packages = ["src/lovstudio"]

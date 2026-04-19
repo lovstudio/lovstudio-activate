@@ -83,8 +83,63 @@ def cmd_status(args) -> int:
     if not lic:
         print("not activated.")
         return 0
-    redacted = {**lic, "license_key": lic["license_key"][:8] + "…"}
-    print(json.dumps(redacted, indent=2, ensure_ascii=False))
+
+    if args.json:
+        redacted = {**lic, "license_key": lic["license_key"][:8] + "…"}
+        print(json.dumps(redacted, indent=2, ensure_ascii=False))
+        return 0
+
+    # License header.
+    key_short = lic["license_key"][:8] + "…"
+    entitled: set[str] = set(lic.get("entitled_skills") or [])
+    print(f"license_key       {key_short}")
+    print(f"device_id         {lic.get('device_id', '—')}")
+    print(f"user_id           {lic.get('user_id', '—')}")
+    print(f"expires_at        {lic.get('expires_at') or '— (no expiry)'}")
+    print(f"last_heartbeat_at {lic.get('last_heartbeat_at') or '—'}")
+    print(f"entitled          {len(entitled)} skill(s)")
+    print()
+
+    # Fetch catalog; fall back to flat list if offline.
+    try:
+        catalog = api.list_catalog()
+    except api.ApiError as e:
+        print(f"(catalog fetch failed — {e.message}; showing flat entitled list)", file=sys.stderr)
+        for name in sorted(entitled):
+            print(f"  [x] {name}")
+        return 0
+
+    # Group by category. `paid` flag tells user whether a skill requires a license at all.
+    by_cat: dict[str, list[dict]] = {}
+    for row in catalog:
+        cat = row.get("category") or "(uncategorized)"
+        by_cat.setdefault(cat, []).append(row)
+
+    known_names = {row["name"] for row in catalog}
+    # Entitled-but-not-in-catalog: show under a synthetic bucket so they aren't lost.
+    orphans = sorted(entitled - known_names)
+    if orphans:
+        by_cat.setdefault("(other)", []).extend({"name": n, "paid": True} for n in orphans)
+
+    for cat in sorted(by_cat):
+        rows = sorted(by_cat[cat], key=lambda r: r["name"])
+        granted = sum(1 for r in rows if r["name"] in entitled)
+        paid_count = sum(1 for r in rows if r.get("paid"))
+        print(f"{cat}  ({granted}/{paid_count} paid entitled, {len(rows)} total)")
+        for r in rows:
+            name = r["name"]
+            has = name in entitled
+            paid = r.get("paid", False)
+            if has:
+                mark = "[x]"
+            elif paid:
+                mark = "[ ]"
+            else:
+                mark = "  ·"  # free skill, no entitlement needed
+            suffix = "" if paid else "  (free)"
+            print(f"  {mark} {name}{suffix}")
+        print()
+
     return 0
 
 
@@ -184,7 +239,8 @@ def main(argv: list[str] | None = None) -> int:
     p_hb = sub.add_parser("heartbeat", help="send heartbeat to refresh license")
     p_hb.set_defaults(func=cmd_heartbeat)
 
-    p_status = sub.add_parser("status", help="show local license state")
+    p_status = sub.add_parser("status", help="show local license state (by category, with entitlement marks)")
+    p_status.add_argument("--json", action="store_true", help="raw JSON output (old behavior)")
     p_status.set_defaults(func=cmd_status)
 
     p_deact = sub.add_parser("deactivate", help="wipe local license file")

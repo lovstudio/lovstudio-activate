@@ -39,6 +39,19 @@ def api_base() -> str:
     return os.environ.get("LOVSTUDIO_API_BASE", DEFAULT_API_BASE)
 
 
+def rest_base() -> str:
+    """PostgREST base URL — derived from api_base() by stripping the Edge
+    Functions suffix. Overridable via env for dev/test.
+    """
+    override = os.environ.get("LOVSTUDIO_REST_BASE")
+    if override:
+        return override
+    base = api_base()
+    suffix = "/functions/v1"
+    root = base[: -len(suffix)] if base.endswith(suffix) else base
+    return f"{root}/rest/v1"
+
+
 def anon_key() -> str:
     return os.environ.get("LOVSTUDIO_ANON_KEY", DEFAULT_ANON_KEY)
 

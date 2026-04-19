@@ -104,3 +104,20 @@ def skill_keys(license_key: str, device_id: str, skill_name: str, skill_version:
         extra_fields={"skill_name": skill_name, "skill_version": skill_version},
     )
     return call("skill_keys", payload)
+
+
+def list_catalog(timeout: int = 15) -> list[dict]:
+    """Public catalog of all skills (no auth). Returns [{name, category, paid}, ...]."""
+    url = f"{config.rest_base()}/skills?select=name,category,paid"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "apikey": config.anon_key(),
+            "authorization": f"Bearer {config.anon_key()}",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        raise ApiError(e.code, "catalog fetch failed") from None

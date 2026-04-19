@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lovstudio"
-version = "0.2.0"
+version = "0.3.0"
 description = "Lovstudio CLI — activate and run paid Lovstudio skills locally. Decryption keys never touch disk."
 requires-python = ">=3.9"
 dependencies = [

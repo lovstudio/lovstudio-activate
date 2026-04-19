@@ -124,34 +124,65 @@ def cmd_status(args) -> int:
     print(f"entitled          {granted}/{total} skills")
     print()
 
-    # Group by category.
+    # Group by category and build rows for the table.
     by_cat: dict[str, list[dict]] = {}
     for row in catalog:
         cat = row.get("category") or "(uncategorized)"
         by_cat.setdefault(cat, []).append(row)
 
     known_names = {row["name"] for row in catalog}
-    # Entitled-but-not-in-catalog: show under a synthetic bucket so they aren't lost.
     orphans = sorted(entitled_names - known_names)
     if orphans:
         by_cat.setdefault("(other)", []).extend(
             {"name": n, "paid": True} for n in orphans
         )
 
+    # Colors: auto-disable when stdout isn't a tty or NO_COLOR is set.
+    use_color = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+
+    def tint(text: str, code: str) -> str:
+        return f"\x1b[{code}m{text}\x1b[0m" if use_color else text
+
+    def status_label(row: dict) -> tuple[str, str]:
+        name = row["name"]
+        if not row.get("paid"):
+            return "free", "2"            # dim
+        if name in entitled_names:
+            return "entitled", "32"       # green
+        return "not yet entitled", "31"   # red
+
+    # Flatten to rows for rendering. Category appears only on its first row.
+    table_rows: list[tuple[str, str, str, str]] = []  # (cat, skill, status, color)
     for cat in sorted(by_cat):
-        rows = sorted(by_cat[cat], key=lambda r: r["name"])
-        cat_granted = sum(1 for r in rows if is_entitled(r))
-        print(f"{cat}  {cat_granted}/{len(rows)} entitled")
-        for r in rows:
-            name = r["name"]
-            paid = r.get("paid", False)
-            if not paid:
-                print(f"  [x] {name} (free)")
-            elif name in entitled_names:
-                print(f"  [x] {name} (entitled)")
-            else:
-                print(f"  [ ] {name} (not yet entitled)")
-        print()
+        first = True
+        for r in sorted(by_cat[cat], key=lambda r: r["name"]):
+            status, color = status_label(r)
+            table_rows.append((cat if first else "", r["name"], status, color))
+            first = False
+
+    headers = ("CATEGORY", "SKILL", "STATUS")
+    widths = [
+        max(len(headers[0]), max((len(r[0]) for r in table_rows), default=0)),
+        max(len(headers[1]), max((len(r[1]) for r in table_rows), default=0)),
+        max(len(headers[2]), max((len(r[2]) for r in table_rows), default=0)),
+    ]
+    gap = "  "
+    header_line = gap.join(h.ljust(w) for h, w in zip(headers, widths))
+    rule = "─" * (sum(widths) + len(gap) * (len(widths) - 1))
+    print(tint(header_line, "1"))  # bold
+    print(rule)
+
+    prev_cat = None
+    for cat, skill, status, color in table_rows:
+        # Blank line between categories to separate visual blocks.
+        if prev_cat is not None and cat and cat != prev_cat:
+            print()
+        cat_cell = cat.ljust(widths[0])
+        skill_cell = skill.ljust(widths[1])
+        status_cell = tint(status.ljust(widths[2]), color)
+        print(f"{cat_cell}{gap}{skill_cell}{gap}{status_cell}")
+        if cat:
+            prev_cat = cat
 
     return 0
 

@@ -21,10 +21,14 @@ from . import api, config
 from .crypto import SkillManifest, decrypt_file
 
 
+_BUY_HINT = "  Buy a license key at https://lovstudio.ai (or follow the 手工川 / ShougongChuan WeChat OA)."
+
+
 def _require_license() -> dict:
     lic = config.load_license()
     if not lic:
         print("error: not activated. run `lovstudio-activate activate <key>` first.", file=sys.stderr)
+        print(_BUY_HINT, file=sys.stderr)
         sys.exit(2)
     return lic
 
@@ -42,6 +46,7 @@ def cmd_activate(args) -> int:
         resp = api.activate(license_key, device_id)
     except api.ApiError as e:
         print(f"error: activation failed — {e.message}", file=sys.stderr)
+        print(_BUY_HINT, file=sys.stderr)
         return 1
 
     data = {
@@ -118,6 +123,9 @@ def _fetch_key(lic: dict, skill_name: str, version: str) -> bytes:
         resp = api.skill_keys(lic["license_key"], lic["device_id"], skill_name, version)
     except api.ApiError as e:
         print(f"error: skill_keys failed — {e.message}", file=sys.stderr)
+        # 403 = entitlement missing for this skill — point at the storefront.
+        if e.status in (401, 403):
+            print(_BUY_HINT, file=sys.stderr)
         sys.exit(1)
     return bytes.fromhex(resp["decryption_key"])
 

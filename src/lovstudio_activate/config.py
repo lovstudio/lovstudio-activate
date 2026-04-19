@@ -76,23 +76,27 @@ def device_info() -> dict:
     }
 
 
-def skill_dir(skill_name: str) -> Path:
-    """Locate an encrypted skill bundle.
+def skill_dir_candidates(skill_name: str) -> list[Path]:
+    """Search candidates for an encrypted skill bundle, in priority order.
 
-    Search order:
-      1. ~/.lovstudio/brand_skills/<name>/       ← explicit install
-      2. ~/.claude/skills/<name>/                ← installed via `npx skills add`
-      3. ~/.claude/skills/lovstudio-<name>/      ← legacy prefixed name
-
-    Returns the first directory that contains a MANIFEST.enc.json.
-    Falls back to the primary path so the error message points somewhere sane.
+    1. ~/.lovstudio/brand_skills/<name>/       ← explicit install (lovstudio-activate manual)
+    2. ~/.claude/skills/<name>/                ← `npx skills add` with bare name
+    3. ~/.claude/skills/lovstudio-<name>/      ← `npx skills add` with namespaced name
+                                                  (free skills + paid skills both land here)
     """
-    candidates = [
+    return [
         BRAND_SKILLS_DIR / skill_name,
         Path.home() / ".claude" / "skills" / skill_name,
         Path.home() / ".claude" / "skills" / f"lovstudio-{skill_name}",
     ]
-    for c in candidates:
+
+
+def skill_dir(skill_name: str) -> Path:
+    """Locate an encrypted skill bundle, returning the first candidate that
+    contains a MANIFEST.enc.json. Falls back to the primary path so callers
+    can render a sane error message.
+    """
+    for c in skill_dir_candidates(skill_name):
         if (c / "MANIFEST.enc.json").exists():
             return c
-    return candidates[0]
+    return skill_dir_candidates(skill_name)[0]

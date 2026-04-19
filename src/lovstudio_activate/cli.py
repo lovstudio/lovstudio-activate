@@ -89,10 +89,16 @@ def cmd_deactivate(args) -> int:
 
 def _manifest_for(skill_name: str) -> SkillManifest:
     d = config.skill_dir(skill_name)
-    if not d.exists():
-        print(f"error: skill '{skill_name}' not installed at {d}.", file=sys.stderr)
-        print(f"  install it via `npx skills add lovstudio/skills` or", file=sys.stderr)
-        print(f"  place the encrypted bundle at {d}/ manually.", file=sys.stderr)
+    if not (d / "MANIFEST.enc.json").exists():
+        candidates = config.skill_dir_candidates(skill_name)
+        print(f"error: skill '{skill_name}' not installed (no MANIFEST.enc.json found).", file=sys.stderr)
+        print(f"  searched, in order:", file=sys.stderr)
+        for c in candidates:
+            mark = "✓" if (c / "MANIFEST.enc.json").exists() else "✗"
+            print(f"    {mark} {c}", file=sys.stderr)
+        print(f"  install via either:", file=sys.stderr)
+        print(f"    npx skills add lovstudio/skills              # full marketplace", file=sys.stderr)
+        print(f"    npx skills add lovstudio/{skill_name}-skill   # just this one", file=sys.stderr)
         sys.exit(2)
     return SkillManifest(d)
 

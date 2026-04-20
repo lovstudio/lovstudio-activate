@@ -499,6 +499,37 @@ def cmd_admin_issue_license(args) -> int:
     return 0
 
 
+# Pre-rendered ASCII QR for WeChat contact YouShouldSpeakHow.
+# Payload: https://u.wechat.com/ME2RAz-Hztr3HwZJWWLmubk?s=4
+# Half-block encoding (2 modules per line) keeps the QR square in terminals.
+# 35×35 module QR with a 2-module quiet zone on all four sides, rendered via
+# half-block encoding (▀▄█) so it stays square in terminals. Assemble row
+# pieces + explicit trailing-space padding so editors that strip trailing
+# whitespace can't silently break the right-side quiet zone.
+_QR_ROWS = [
+    " ▄▄▄▄▄▄▄ ▄  ▄ ▄▄ ▄▄▄ ▄  ▄  ▄▄▄▄▄▄▄ ",
+    " █ ▄▄▄ █ ▀ █▀█▀  ▄▄▀ ▄▀▀█▀ █ ▄▄▄ █ ",
+    " █ ███ █ ▀█▀  ▄█ ▀  ▀█▄█   █ ███ █ ",
+    " █▄▄▄▄▄█ ▄ ▄ ▄ ▄ ▄ █▀█ █ █ █▄▄▄▄▄█ ",
+    " ▄ ▄▄ ▄▄▄▀▀▄█▀ █ ▄▀█▄▀▄ ▄  ▄  ▄ ▄▄ ",
+    " █▀▄▄▀▀▄▄█▄█▀█ █▀█▄▀▀ █ █▄▄██▄█▀▄▄ ",
+    "  ▄▀▀█▀▄█  ▀ █▀▀   ██▀   █▄▀▀ █  ▀ ",
+    "  █▀▄▄▄▄▄▄▄ ▄▀█▄▄█▀█   █ ▀ ██ ▀▀▀  ",
+    " █▀▄ ▄█▄    ▀▄█▀▄▀  █████▀██ ▄▀█   ",
+    "  ▄▄ ▄ ▄ █▀ █▀▀▀█▀█▀ ██▄▀▀▄█▄█▀▄ ▀ ",
+    " ▀ █▀▀▄▄▀   ███▀█  ▄▀▄▄█ ▀ ▀▄█▄▄▄  ",
+    " ▀▀▄█▄█▄█▀  ▄▀▄█▀▄ ▀  ▀██▄▄█ ▄▀█▄█ ",
+    " ▄▀█▀▀ ▄█▀▄ █▀  ▄█  ▀  ▀ █▄▄▄▄█▄▀  ",
+    " ▄▄▄▄▄▄▄ █ █▀▄▀█▀▀▀▀█▄  ▄█ ▄ █▀ ▀  ",
+    " █ ▄▄▄ █ ▀  ▄█  ▀ ▄ ▀▄▀ ██▄▄▄█▀█▄▄ ",
+    " █ ███ █ █▀█▄█▄▀  ▄██▀▀█▄▀▀▄█  ▀ ▀ ",
+    " █▄▄▄▄▄█ ▄▄  ▄  ██▀▄▀ ▄ ▄▀▀ ▀█   ▀ ",
+    " " * 35,
+]
+_PAD = " "
+_WECHAT_QR_ASCII = "\n".join(_PAD + row + _PAD for row in _QR_ROWS)
+
+
 def _print_forwardable_message(
     *,
     license_key: str,
@@ -509,23 +540,26 @@ def _print_forwardable_message(
     """Print a ready-to-paste Chinese message for the end user.
 
     Copy everything between the --- markers and send via WeChat / email.
+    Activate is step 1 (it's a local state write, no skill required);
+    installing comes after so every skill the user adds later is already
+    entitled.
     """
     if is_global:
         scope_line = "授权范围：Lovstudio 全套 skill"
         install_lines = [
-            "  1. 安装全套 skill：",
+            "  2. 安装全套 skill：",
             "     npx skills add lovstudio/skills",
         ]
     elif len(granted_skills) == 1:
         scope_line = f"授权范围：{granted_skills[0]}"
         install_lines = [
-            "  1. 安装 skill：",
+            "  2. 安装 skill：",
             f"     npx lovstudio skills add {granted_skills[0]}",
         ]
     else:
         scope_line = "授权范围：\n  - " + "\n  - ".join(granted_skills)
         install_lines = [
-            "  1. 安装 skill（逐个安装）：",
+            "  2. 安装 skill（逐个安装）：",
             *[f"     npx lovstudio skills add {s}" for s in granted_skills],
         ]
 
@@ -546,13 +580,16 @@ def _print_forwardable_message(
         lines.append(expiry_line)
     lines.extend([
         "",
-        "激活步骤：",
-        *install_lines,
-        "  2. 激活 license（粘贴上面的 key）：",
+        "激活步骤（推荐在 Claude Code / 龙虾 等 agent runtime 里运行）：",
+        "  1. 激活 license（本地绑定，只需一次）：",
         f"     npx lovstudio skills activate {license_key}",
+        *install_lines,
         "  3. 在 Claude Code 里直接调用对应 skill 即可。",
         "",
-        "遇到问题请关注 #公众号：手工川 留言，或邮件 shawninjuly@gmail.com。",
+        "遇到问题请关注 #公众号：手工川 留言，或邮件 founder@lovstudio.ai，",
+        "也可以加微信 YouShouldSpeakHow（扫下方二维码）：",
+        "",
+        _WECHAT_QR_ASCII,
         "",
         "── 复制结束 ──",
     ])

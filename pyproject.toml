@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lovstudio-skill-helper"
-version = "0.6.2"
+version = "0.6.3"
 description = "Lovstudio skill helper — activate and run paid Lovstudio skills locally. Decryption keys never touch disk."
 requires-python = ">=3.9"
 dependencies = [

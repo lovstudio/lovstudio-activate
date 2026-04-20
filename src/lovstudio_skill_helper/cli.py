@@ -17,7 +17,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from . import api, completion, config
+from . import api, auth, completion, config
 from .crypto import SkillManifest, decrypt_file
 
 
@@ -34,6 +34,8 @@ def _require_license() -> dict:
 
 
 def cmd_activate(args) -> int:
+    from . import __version__
+
     raw = args.key.strip().lower()
     # Accept the human-friendly "lk-" prefix; the wire protocol uses raw hex.
     license_key = raw[3:] if raw.startswith("lk-") else raw
@@ -44,8 +46,27 @@ def cmd_activate(args) -> int:
     existing = config.load_license() or {}
     device_id = existing.get("device_id") or config.generate_device_id()
 
+    # Require a Lovstudio session so the license row is bound to an auth user.
+    # If none exists or it's expired past refresh, kick off the device flow
+    # inline — users shouldn't have to know `login` is a separate command.
     try:
-        resp = api.activate(license_key, device_id)
+        bearer = auth.refresh_if_needed()["access_token"]
+    except auth.AuthError:
+        if args.no_login:
+            print("error: not logged in (and --no-login set). run `lovstudio-skill-helper login` first.",
+                  file=sys.stderr)
+            return 1
+        print("→ no Lovstudio session — signing in first")
+        try:
+            session = auth.login(f"lovstudio-skill-helper {__version__}")
+        except auth.AuthError as e:
+            print(f"error: login failed — {e}", file=sys.stderr)
+            return 1
+        print(f"✓ signed in as {session.get('email') or session.get('user_id')}")
+        bearer = session["access_token"]
+
+    try:
+        resp = api.activate(license_key, device_id, bearer=bearer)
     except api.ApiError as e:
         print(f"error: activation failed — {e.message}", file=sys.stderr)
         print(_BUY_HINT, file=sys.stderr)
@@ -73,9 +94,30 @@ def cmd_heartbeat(args) -> int:
         print(f"error: heartbeat failed — {e.message}", file=sys.stderr)
         return 1
     lic["expires_at"] = resp.get("expires_at")
+    lic["last_heartbeat_at"] = _utcnow_iso()
+    # Server is authoritative for entitlements. Admin can top up skills between
+    # activate and heartbeat, so every heartbeat re-syncs the list.
+    new_skills = resp.get("entitled_skills")
+    added: list[str] = []
+    removed: list[str] = []
+    if isinstance(new_skills, list):
+        old_skills = set(lic.get("entitled_skills") or [])
+        new_set = set(new_skills)
+        added = sorted(new_set - old_skills)
+        removed = sorted(old_skills - new_set)
+        lic["entitled_skills"] = sorted(new_set)
     config.save_license(lic)
     print(f"✓ heartbeat ok. expires_at={resp.get('expires_at')}")
+    if added:
+        print(f"  + entitled: {', '.join(added)}")
+    if removed:
+        print(f"  - revoked:  {', '.join(removed)}")
     return 0
+
+
+def _utcnow_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
 
 
 def cmd_status(args) -> int:
@@ -223,12 +265,63 @@ def _fetch_key(lic: dict, skill_name: str, version: str) -> bytes:
     try:
         resp = api.skill_keys(lic["license_key"], lic["device_id"], skill_name, version)
     except api.ApiError as e:
+        # 401/403 means the license is valid but missing entitlement for this skill.
+        # Offer the user a path forward instead of dumping a stack-shaped error.
+        if e.status in (401, 403) and sys.stdin.isatty():
+            new_key = _prompt_not_entitled(skill_name)
+            if new_key is None:
+                sys.exit(1)
+            # Re-activate with the new key (may be a different license), then retry.
+            if _reactivate(new_key) != 0:
+                sys.exit(1)
+            lic = _require_license()
+            try:
+                resp = api.skill_keys(lic["license_key"], lic["device_id"], skill_name, version)
+            except api.ApiError as e2:
+                print(f"error: skill_keys failed after re-activation — {e2.message}", file=sys.stderr)
+                sys.exit(1)
+            return bytes.fromhex(resp["decryption_key"])
         print(f"error: skill_keys failed — {e.message}", file=sys.stderr)
-        # 403 = entitlement missing for this skill — point at the storefront.
         if e.status in (401, 403):
             print(_BUY_HINT, file=sys.stderr)
         sys.exit(1)
     return bytes.fromhex(resp["decryption_key"])
+
+
+def _prompt_not_entitled(skill_name: str) -> str | None:
+    """Ask the user how to resolve a missing entitlement. Returns a new license key or None."""
+    import webbrowser
+
+    buy_url = f"https://lovstudio.ai/skills/{skill_name}"
+    print(f"", file=sys.stderr)
+    print(f"You don't have access to '{skill_name}' yet.", file=sys.stderr)
+    print(f"  [1] enter a different license key", file=sys.stderr)
+    print(f"  [2] open purchase page ({buy_url})", file=sys.stderr)
+    print(f"  [3] cancel", file=sys.stderr)
+    try:
+        choice = input("choose [1/2/3]: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print("", file=sys.stderr)
+        return None
+    if choice == "1":
+        try:
+            return input("license key (lk-...): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("", file=sys.stderr)
+            return None
+    if choice == "2":
+        try:
+            webbrowser.open(buy_url)
+        except Exception:
+            pass
+        print(f"→ opened {buy_url} — complete purchase, then re-run your command.", file=sys.stderr)
+    return None
+
+
+def _reactivate(license_key: str) -> int:
+    """Run activate with the given key, reusing the current TTY. Returns exit code."""
+    ns = argparse.Namespace(key=license_key, no_login=False)
+    return cmd_activate(ns)
 
 
 def cmd_decrypt(args) -> int:
@@ -272,6 +365,140 @@ def cmd_exec(args) -> int:
         return result.returncode
 
 
+def cmd_call(args) -> int:
+    """Invoke a cloud-split skill's server-side handler.
+
+    Emits the handler's `output` payload as JSON on stdout. Errors go to stderr.
+    """
+    lic = _require_license()
+    try:
+        input_data = json.loads(args.input) if args.input else {}
+    except json.JSONDecodeError as e:
+        print(f"error: --input is not valid JSON — {e}", file=sys.stderr)
+        return 2
+    if not isinstance(input_data, dict):
+        print("error: --input must be a JSON object", file=sys.stderr)
+        return 2
+
+    try:
+        resp = api.skill_call(
+            lic["license_key"], lic["device_id"],
+            args.skill_name, args.skill_version, args.op, input_data,
+        )
+    except api.ApiError as e:
+        print(f"error: {e.message}", file=sys.stderr)
+        if e.status in (401, 403):
+            print(_BUY_HINT, file=sys.stderr)
+        return 1
+
+    output = resp.get("output", resp)
+    print(json.dumps(output, ensure_ascii=False))
+    return 0
+
+
+def cmd_admin_issue_license(args) -> int:
+    """Admin-only: mint a license key via the /issue_license edge function.
+
+    Hidden subcommand — wrapped by `npx lovstudio license issue`. Requires
+    the caller's auth.user.id to be in the ADMIN_USER_IDS server env.
+    """
+    from . import __version__
+
+    try:
+        bearer = auth.refresh_if_needed()["access_token"]
+    except auth.AuthError:
+        print("→ no Lovstudio session — signing in first")
+        try:
+            session = auth.login(f"lovstudio-skill-helper {__version__}")
+        except auth.AuthError as e:
+            print(f"error: login failed — {e}", file=sys.stderr)
+            return 1
+        print(f"✓ signed in as {session.get('email') or session.get('user_id')}")
+        bearer = session["access_token"]
+
+    body: dict = {}
+    if args.skills:
+        body["skills"] = [s.strip() for s in args.skills.split(",") if s.strip()]
+    if args.scope:
+        body["scope"] = args.scope
+    if args.scope_value:
+        body["scope_value"] = args.scope_value
+    if args.user:
+        body["user_id"] = args.user
+    if args.max_devices is not None:
+        body["max_devices"] = args.max_devices
+    if args.expires_days is not None:
+        # edge function expects expires_at (ISO); convert days → ISO
+        from datetime import datetime, timedelta, timezone
+        if args.expires_days == 0:
+            body["expires_at"] = None
+        else:
+            body["expires_at"] = (
+                datetime.now(timezone.utc) + timedelta(days=args.expires_days)
+            ).isoformat()
+    if args.source:
+        body["source"] = args.source
+    if args.notes:
+        body["notes"] = args.notes
+    if args.force_new:
+        body["force_new"] = True
+
+    try:
+        resp = api.call("issue_license", body, bearer=bearer)
+    except api.ApiError as e:
+        print(f"error: issue_license failed — {e.message}", file=sys.stderr)
+        return 1
+
+    if args.json:
+        print(json.dumps(resp, ensure_ascii=False, indent=2))
+        return 0
+
+    if resp.get("reused"):
+        print(f"✓ topped up license #{resp['license_id']}")
+        print(f"  granted_skills: {', '.join(resp.get('granted_skills') or [])}")
+        newly = resp.get("newly_granted") or []
+        if newly:
+            print(f"  newly_granted:  {', '.join(newly)}")
+        print(f"  expires_at:     {resp.get('expires_at') or '— (no expiry)'}")
+    else:
+        print(f"✓ minted license #{resp['license_id']}")
+        print(f"  license_key:    {resp['license_key']}")
+        print(f"  proof_user_id:  {resp['proof_user_id']}")
+        print(f"  granted_skills: {', '.join(resp.get('granted_skills') or [])}")
+        print(f"  expires_at:     {resp.get('expires_at') or '— (no expiry)'}")
+        print()
+        print("  ⚠ the plaintext key is shown ONCE. Copy it now.")
+    return 0
+
+
+def cmd_login(args) -> int:
+    from . import __version__
+
+    client = f"lovstudio-skill-helper {__version__}"
+    try:
+        session = auth.login(client, open_browser=not args.no_browser)
+    except auth.AuthError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    print(f"✓ logged in as {session.get('email') or session.get('user_id')}")
+    return 0
+
+
+def cmd_logout(args) -> int:
+    auth.wipe_auth()
+    print("✓ logged out")
+    return 0
+
+
+def cmd_whoami(args) -> int:
+    session = auth.whoami()
+    if not session:
+        print("not logged in", file=sys.stderr)
+        return 1
+    print(session.get("email") or session.get("user_id") or "(unknown)")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     from . import __version__
 
@@ -283,8 +510,24 @@ def main(argv: list[str] | None = None) -> int:
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    p_activate = sub.add_parser("activate", help="activate a license key")
+    p_login = sub.add_parser("login", help="sign in to Lovstudio (device flow)")
+    p_login.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="print the URL instead of auto-opening it",
+    )
+    p_login.set_defaults(func=cmd_login)
+
+    p_logout = sub.add_parser("logout", help="forget the local Lovstudio session")
+    p_logout.set_defaults(func=cmd_logout)
+
+    p_whoami = sub.add_parser("whoami", help="show the email of the logged-in account")
+    p_whoami.set_defaults(func=cmd_whoami)
+
+    p_activate = sub.add_parser("activate", help="activate a license key (triggers login if needed)")
     p_activate.add_argument("key", help="license key (e.g. lk-<64 hex chars>)")
+    p_activate.add_argument("--no-login", action="store_true",
+                            help="fail instead of launching the device flow when no session exists")
     p_activate.set_defaults(func=cmd_activate)
 
     p_hb = sub.add_parser("heartbeat", help="send heartbeat to refresh license")
@@ -307,6 +550,13 @@ def main(argv: list[str] | None = None) -> int:
     p_exec.add_argument("script_args", nargs=argparse.REMAINDER)
     p_exec.set_defaults(func=cmd_exec)
 
+    p_call = sub.add_parser("call", help="invoke a cloud-split skill's server-side handler")
+    p_call.add_argument("skill_name")
+    p_call.add_argument("--op", required=True, help="handler operation, e.g. `evaluate`")
+    p_call.add_argument("--input", default="{}", help="JSON object forwarded to the handler as `input`")
+    p_call.add_argument("--skill-version", default="0.1.0", help="skill version (must match server-side skills row)")
+    p_call.set_defaults(func=cmd_call)
+
     p_comp = sub.add_parser(
         "completion",
         help="install or print shell completion (bash, zsh)",
@@ -323,6 +573,23 @@ def main(argv: list[str] | None = None) -> int:
         help="required with `install` if $SHELL can't be auto-detected",
     )
     p_comp.set_defaults(func=completion.cmd_completion)
+
+    # Hidden admin command — used by `npx lovstudio license issue`.
+    p_ail = sub.add_parser("admin-issue-license", help=argparse.SUPPRESS)
+    p_ail.add_argument("--skills", help="comma-separated skill names (preferred)")
+    p_ail.add_argument("--scope", choices=["skill", "category", "global"],
+                       help="legacy scope (used only if --skills omitted)")
+    p_ail.add_argument("--scope-value", help="legacy scope_value")
+    p_ail.add_argument("--user", help="auth.users uuid to bind (omit = anonymous)")
+    p_ail.add_argument("--max-devices", type=int, default=None)
+    p_ail.add_argument("--expires-days", type=int, default=None,
+                       help="days until expiry (0 = no expiry)")
+    p_ail.add_argument("--source", default=None)
+    p_ail.add_argument("--notes", default=None)
+    p_ail.add_argument("--force-new", action="store_true",
+                       help="mint a new key even if the user already has one")
+    p_ail.add_argument("--json", action="store_true", help="raw JSON output")
+    p_ail.set_defaults(func=cmd_admin_issue_license)
 
     # Hidden helpers used by the completion scripts themselves.
     p_cs = sub.add_parser("_complete-skills", help=argparse.SUPPRESS)

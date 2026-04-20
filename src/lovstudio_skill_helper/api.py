@@ -64,14 +64,18 @@ class ApiError(RuntimeError):
         self.message = message
 
 
-def call(path: str, body: dict, timeout: int = 15) -> dict:
+def call(path: str, body: dict, timeout: int = 15, bearer: str | None = None) -> dict:
+    # A user JWT (from device-flow login) is also a valid Supabase JWT, so it
+    # clears the Functions gateway. If we don't have one, fall back to anon.
+    headers = {
+        "content-type": "application/json",
+        "apikey": config.anon_key(),
+        "authorization": f"Bearer {bearer or config.anon_key()}",
+    }
     req = urllib.request.Request(
         f"{config.api_base()}/{path}",
         data=json.dumps(body).encode(),
-        headers={
-            "content-type": "application/json",
-            "authorization": f"Bearer {config.anon_key()}",
-        },
+        headers=headers,
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -84,12 +88,12 @@ def call(path: str, body: dict, timeout: int = 15) -> dict:
         raise ApiError(e.code, err_body) from None
 
 
-def activate(license_key: str, device_id: str) -> dict:
+def activate(license_key: str, device_id: str, bearer: str | None = None) -> dict:
     payload = signed_payload(
         license_key, "activate", device_id,
         extra_fields={"device_info": config.device_info()},
     )
-    return call("activate", payload)
+    return call("activate", payload, bearer=bearer)
 
 
 def heartbeat(license_key: str, device_id: str) -> dict:
@@ -104,6 +108,33 @@ def skill_keys(license_key: str, device_id: str, skill_name: str, skill_version:
         extra_fields={"skill_name": skill_name, "skill_version": skill_version},
     )
     return call("skill_keys", payload)
+
+
+def skill_call(
+    license_key: str,
+    device_id: str,
+    skill_name: str,
+    skill_version: str,
+    op: str,
+    input_data: dict,
+) -> dict:
+    """Invoke a cloud-split skill's server-side handler.
+
+    Returns the handler's `output` payload verbatim. Core logic runs on the
+    server; the client only ever sees structured data, never the implementation.
+    """
+    suffix = f":{skill_name}:{skill_version}:{op}"
+    payload = signed_payload(
+        license_key, "skill_call", device_id,
+        extra_suffix=suffix,
+        extra_fields={
+            "skill_name": skill_name,
+            "skill_version": skill_version,
+            "op": op,
+            "input": input_data,
+        },
+    )
+    return call("skill_call", payload)
 
 
 def list_catalog(timeout: int = 15) -> list[dict]:

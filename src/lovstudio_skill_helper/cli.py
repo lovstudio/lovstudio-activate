@@ -245,8 +245,8 @@ def _manifest_for(skill_name: str) -> SkillManifest:
             mark = "✓" if (c / "MANIFEST.enc.json").exists() else "✗"
             print(f"    {mark} {c}", file=sys.stderr)
         print(f"  install via either:", file=sys.stderr)
-        print(f"    npx skills add lovstudio/skills              # full marketplace", file=sys.stderr)
-        print(f"    npx skills add lovstudio/{skill_name}-skill   # just this one", file=sys.stderr)
+        print(f"    npx skills add lovstudio/skills                              # full marketplace", file=sys.stderr)
+        print(f"    npx skills add lovstudio/skills --skill lovstudio:{skill_name}   # just this one", file=sys.stderr)
         sys.exit(2)
     return SkillManifest(d)
 

@@ -416,6 +416,20 @@ def cmd_admin_issue_license(args) -> int:
         print(f"✓ signed in as {session.get('email') or session.get('user_id')}")
         bearer = session["access_token"]
 
+    if not args.skills and not args.scope:
+        print(
+            "error: must specify which skills to grant.\n"
+            "  --skills <name1,name2,...>   grant specific skills\n"
+            "  --scope global               grant ALL skills in the catalog\n"
+            "  --scope category --scope-value \"Image & Design\"   grant all skills in a category\n"
+            "\n"
+            "examples:\n"
+            "  npx lovstudio license issue --scope global --notes \"测试 all\"\n"
+            "  npx lovstudio license issue --skills paid-add,event-poster --notes \"朋友测试\"",
+            file=sys.stderr,
+        )
+        return 2
+
     body: dict = {}
     if args.skills:
         body["skills"] = [s.strip() for s in args.skills.split(",") if s.strip()]

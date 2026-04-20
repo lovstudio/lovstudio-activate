@@ -467,22 +467,96 @@ def cmd_admin_issue_license(args) -> int:
         print(json.dumps(resp, ensure_ascii=False, indent=2))
         return 0
 
+    granted = resp.get("granted_skills") or []
+    expires_at = resp.get("expires_at")
+    is_global = bool(args.scope == "global")
+
     if resp.get("reused"):
         print(f"✓ topped up license #{resp['license_id']}")
-        print(f"  granted_skills: {', '.join(resp.get('granted_skills') or [])}")
+        print(f"  granted_skills: {', '.join(granted)}")
         newly = resp.get("newly_granted") or []
         if newly:
             print(f"  newly_granted:  {', '.join(newly)}")
-        print(f"  expires_at:     {resp.get('expires_at') or '— (no expiry)'}")
-    else:
-        print(f"✓ minted license #{resp['license_id']}")
-        print(f"  license_key:    {resp['license_key']}")
-        print(f"  proof_user_id:  {resp['proof_user_id']}")
-        print(f"  granted_skills: {', '.join(resp.get('granted_skills') or [])}")
-        print(f"  expires_at:     {resp.get('expires_at') or '— (no expiry)'}")
-        print()
-        print("  ⚠ the plaintext key is shown ONCE. Copy it now.")
+        print(f"  expires_at:     {expires_at or '— (no expiry)'}")
+        # Top-up path: the plaintext key was issued earlier, we can't
+        # reconstruct it. Skip the forwardable message.
+        return 0
+
+    print(f"✓ minted license #{resp['license_id']}")
+    print(f"  license_key:    {resp['license_key']}")
+    print(f"  proof_user_id:  {resp['proof_user_id']}")
+    print(f"  granted_skills: {', '.join(granted)}")
+    print(f"  expires_at:     {expires_at or '— (no expiry)'}")
+    print()
+    print("  ⚠ the plaintext key is shown ONCE. Copy it now.")
+    print()
+    _print_forwardable_message(
+        license_key=resp["license_key"],
+        granted_skills=granted,
+        expires_at=expires_at,
+        is_global=is_global,
+    )
     return 0
+
+
+def _print_forwardable_message(
+    *,
+    license_key: str,
+    granted_skills: list,
+    expires_at: str | None,
+    is_global: bool,
+) -> None:
+    """Print a ready-to-paste Chinese message for the end user.
+
+    Copy everything between the --- markers and send via WeChat / email.
+    """
+    if is_global:
+        scope_line = "授权范围：Lovstudio 全套 skill"
+        install_lines = [
+            "  1. 安装全套 skill：",
+            "     npx skills add lovstudio/skills",
+        ]
+    elif len(granted_skills) == 1:
+        scope_line = f"授权范围：{granted_skills[0]}"
+        install_lines = [
+            "  1. 安装 skill：",
+            f"     npx lovstudio skills add {granted_skills[0]}",
+        ]
+    else:
+        scope_line = "授权范围：\n  - " + "\n  - ".join(granted_skills)
+        install_lines = [
+            "  1. 安装 skill（逐个安装）：",
+            *[f"     npx lovstudio skills add {s}" for s in granted_skills],
+        ]
+
+    expiry_line = ""
+    if expires_at:
+        expiry_line = f"有效期至：{expires_at[:10]}"
+
+    lines = [
+        "── 复制以下内容发给用户 ──",
+        "",
+        "你的 Lovstudio license key：",
+        "",
+        f"  {license_key}",
+        "",
+        scope_line,
+    ]
+    if expiry_line:
+        lines.append(expiry_line)
+    lines.extend([
+        "",
+        "激活步骤：",
+        *install_lines,
+        "  2. 激活 license（粘贴上面的 key）：",
+        f"     npx lovstudio skills activate {license_key}",
+        "  3. 在 Claude Code 里直接调用对应 skill 即可。",
+        "",
+        "遇到问题请关注 #公众号：手工川 留言，或邮件 shawninjuly@gmail.com。",
+        "",
+        "── 复制结束 ──",
+    ])
+    print("\n".join(lines))
 
 
 def cmd_login(args) -> int:

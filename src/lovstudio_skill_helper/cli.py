@@ -454,6 +454,8 @@ def cmd_admin_issue_license(args) -> int:
         body["source"] = args.source
     if args.notes:
         body["notes"] = args.notes
+    if args.nickname:
+        body["nickname"] = args.nickname
     if args.force_new:
         body["force_new"] = True
 
@@ -469,10 +471,13 @@ def cmd_admin_issue_license(args) -> int:
 
     granted = resp.get("granted_skills") or []
     expires_at = resp.get("expires_at")
+    nickname = resp.get("nickname")
     is_global = bool(args.scope == "global")
 
     if resp.get("reused"):
         print(f"✓ topped up license #{resp['license_id']}")
+        if nickname:
+            print(f"  nickname:       {nickname}")
         print(f"  granted_skills: {', '.join(granted)}")
         newly = resp.get("newly_granted") or []
         if newly:
@@ -484,6 +489,8 @@ def cmd_admin_issue_license(args) -> int:
 
     print(f"✓ minted license #{resp['license_id']}")
     print(f"  license_key:    {resp['license_key']}")
+    if nickname:
+        print(f"  nickname:       {nickname}")
     print(f"  proof_user_id:  {resp['proof_user_id']}")
     print(f"  granted_skills: {', '.join(granted)}")
     print(f"  expires_at:     {expires_at or '— (no expiry)'}")
@@ -495,6 +502,7 @@ def cmd_admin_issue_license(args) -> int:
         granted_skills=granted,
         expires_at=expires_at,
         is_global=is_global,
+        nickname=nickname,
     )
     return 0
 
@@ -505,13 +513,15 @@ def _print_forwardable_message(
     granted_skills: list,
     expires_at: str | None,
     is_global: bool,
+    nickname: str | None = None,
 ) -> None:
     """Print a ready-to-paste Chinese message for the end user.
 
     Copy everything between the --- markers and send via WeChat / email.
     Activate is step 1 (it's a local state write, no skill required);
     installing comes after so every skill the user adds later is already
-    entitled.
+    entitled. When a nickname is supplied, greet the recipient by name —
+    turns a generic hand-off into a personal one.
     """
     if is_global:
         scope_line = "授权范围：Lovstudio 全套 skill"
@@ -534,10 +544,15 @@ def _print_forwardable_message(
 
     expiry_line = f"有效期至：{expires_at[:10]}" if expires_at else ""
 
+    greeting = (
+        f"🎉 {nickname}，你的 Lovstudio license 已开通～"
+        if nickname
+        else "🎉 你的 Lovstudio license 已开通～"
+    )
     lines = [
         "── 复制以下内容发给用户 ──",
         "",
-        "🎉 你的 Lovstudio license 已开通～",
+        greeting,
         "",
         scope_line,
     ]
@@ -673,6 +688,9 @@ def main(argv: list[str] | None = None) -> int:
                        help="days until expiry (0 = no expiry)")
     p_ail.add_argument("--source", default=None)
     p_ail.add_argument("--notes", default=None)
+    p_ail.add_argument("--nickname", default=None,
+                       help="recipient label, e.g. '李柯江'. Used to greet them "
+                            "in the forwardable message and bind later.")
     p_ail.add_argument("--force-new", action="store_true",
                        help="mint a new key even if the user already has one")
     p_ail.add_argument("--json", action="store_true", help="raw JSON output")

@@ -21,7 +21,7 @@ from . import api, auth, completion, config
 from .crypto import SkillManifest, decrypt_file
 
 
-_BUY_HINT = "  Buy a license key at https://lovstudio.ai (or follow the 手工川 / ShougongChuan WeChat OA)."
+_BUY_HINT = "  前往 https://lovstudio.ai 购买 license key，或关注 #公众号：手工川 购买。"
 
 
 def _require_license() -> dict:

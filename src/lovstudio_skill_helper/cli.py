@@ -532,16 +532,12 @@ def _print_forwardable_message(
             *[f"     npx lovstudio skills add {s}" for s in granted_skills],
         ]
 
-    expiry_line = ""
-    if expires_at:
-        expiry_line = f"有效期至：{expires_at[:10]}"
+    expiry_line = f"有效期至：{expires_at[:10]}" if expires_at else ""
 
     lines = [
         "── 复制以下内容发给用户 ──",
         "",
-        "你的 Lovstudio license key：",
-        "",
-        f"  {license_key}",
+        "🎉 你的 Lovstudio license 已开通～",
         "",
         scope_line,
     ]
@@ -553,7 +549,7 @@ def _print_forwardable_message(
         "  1. 激活 license（本地绑定，只需一次）：",
         f"     npx lovstudio skills activate {license_key}",
         *install_lines,
-        "  3. 在 Claude Code 里直接调用对应 skill 即可。",
+        "  3. 在 agent 里直接调用对应 skill 即可。",
         "",
         "遇到问题请关注 #公众号：手工川 留言。",
         "",

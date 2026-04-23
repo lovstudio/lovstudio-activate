@@ -44,6 +44,10 @@ _lovstudio_skill_helper() {
                 local skills
                 skills=$(lovstudio-skill-helper _complete-skills 2>/dev/null)
                 COMPREPLY=($(compgen -W "$skills" -- "$cur"))
+            elif [[ $cword -eq 3 ]]; then
+                local files
+                files=$(lovstudio-skill-helper _complete-skill-files "${words[2]}" 2>/dev/null)
+                COMPREPLY=($(compgen -W "$files" -- "$cur"))
             fi
             ;;
         exec)
@@ -81,7 +85,7 @@ _lovstudio_skill_helper() {
         'heartbeat:send heartbeat to refresh license'
         'status:show local license state'
         'deactivate:wipe local license file'
-        'decrypt:print decrypted SKILL.md to stdout'
+        'decrypt:print a decrypted skill file to stdout (defaults to SKILL.md)'
         'exec:run a decrypted script from a skill'
         'completion:install / print shell completion'
     )
@@ -100,9 +104,15 @@ _lovstudio_skill_helper() {
                     _arguments '--json[raw JSON output]'
                     ;;
                 decrypt)
-                    local -a skills
-                    skills=(${(f)"$(lovstudio-skill-helper _complete-skills 2>/dev/null)"})
-                    _describe -t skills 'skill' skills
+                    if (( CURRENT == 2 )); then
+                        local -a skills
+                        skills=(${(f)"$(lovstudio-skill-helper _complete-skills 2>/dev/null)"})
+                        _describe -t skills 'skill' skills
+                    elif (( CURRENT == 3 )); then
+                        local -a files
+                        files=(${(f)"$(lovstudio-skill-helper _complete-skill-files $line[2] 2>/dev/null)"})
+                        _describe -t files 'file' files
+                    fi
                     ;;
                 exec)
                     if (( CURRENT == 2 )); then

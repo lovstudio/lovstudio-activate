@@ -412,12 +412,22 @@ def _activate_and_stack(license_key: str) -> int:
 
 
 def cmd_decrypt(args) -> int:
-    """Print the decrypted SKILL.md to stdout. This is what Claude reads."""
+    """Print a decrypted file to stdout. Defaults to SKILL.md — what Claude first reads.
+
+    Pass a second positional arg (e.g. `references/workflow.md`) to decrypt any
+    other file declared in the skill's MANIFEST. The path must match exactly
+    what `pack_dir` recorded (relative to src/, forward slashes).
+    """
     _require_licenses()
     manifest = _manifest_for(args.skill_name)
     version = _read_skill_version(manifest)
     key = _fetch_key(args.skill_name, version)
-    plaintext = decrypt_file(manifest, "SKILL.md", key)
+    rel = args.rel_path or "SKILL.md"
+    if rel not in manifest.files:
+        print(f"error: '{rel}' not in manifest for '{args.skill_name}'.", file=sys.stderr)
+        print(f"       available files: {', '.join(sorted(manifest.files))}", file=sys.stderr)
+        return 2
+    plaintext = decrypt_file(manifest, rel, key)
     sys.stdout.buffer.write(plaintext)
     return 0
 
@@ -827,8 +837,12 @@ def main(argv: list[str] | None = None) -> int:
                          help="wipe every stacked license from this machine")
     p_deact.set_defaults(func=cmd_deactivate)
 
-    p_dec = sub.add_parser("decrypt", help="print decrypted SKILL.md to stdout")
+    p_dec = sub.add_parser("decrypt",
+                           help="print a decrypted skill file to stdout (defaults to SKILL.md)")
     p_dec.add_argument("skill_name")
+    p_dec.add_argument("rel_path", nargs="?", default=None,
+                       help="optional: path inside the skill (e.g. references/workflow.md). "
+                            "omit to decrypt SKILL.md")
     p_dec.set_defaults(func=cmd_decrypt)
 
     p_exec = sub.add_parser("exec", help="run a decrypted script from a skill")

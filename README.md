@@ -10,6 +10,10 @@ The canonical way is via [`uv`](https://docs.astral.sh/uv/) — no install step 
 uvx lovstudio-skill-helper activate <license-key>
 ```
 
+The npm `lovstudio license activate` command calls this helper through `uvx`.
+If you do not want to run the local helper for activation, bind the license on
+the web instead: https://lovstudio.ai/license/redeem
+
 Or install it persistently:
 
 ```bash
@@ -33,7 +37,10 @@ lovstudio-skill-helper deactivate       # wipe local license
 
 ## How it works
 
-Paid skills ship as AES-256-GCM ciphertext under `~/.claude/skills/<name>/` (or `~/.claude/skills/lovstudio-<name>/`), placed there by `npx skills add ...`. Each call to `decrypt` / `exec`:
+Paid skills ship as AES-256-GCM ciphertext under the agent skill directory
+created by `npx skills add ...`, normally `~/.agents/skills/lovstudio-<name>/`
+with agent-specific copies or links such as `~/.claude/skills/...`. Each call
+to `decrypt` / `exec`:
 
 1. Signs an HMAC proof with your license key (key itself never leaves the device).
 2. Hits the Lovstudio license server, which verifies the proof, checks entitlement, and returns a per-skill-version AES key.

@@ -628,14 +628,14 @@ def _print_forwardable_message(
     """
     if is_global:
         scope_line = "**授权范围**：Lovstudio 全套 skill"
-        install_step = "lovstudio skills add lovstudio/skills"
+        install_step = "lovstudio skills add skills -g -y"
     elif len(granted_skills) == 1:
         scope_line = f"**授权范围**：{granted_skills[0]}"
-        install_step = f"lovstudio skills add {granted_skills[0]}"
+        install_step = f"lovstudio skills add {granted_skills[0]} -g -y"
     else:
         scope_line = "**授权范围**：\n  - " + "\n  - ".join(granted_skills)
         install_step = "\n".join(
-            f"lovstudio skills add {s}" for s in granted_skills
+            f"lovstudio skills add {s} -g -y" for s in granted_skills
         )
 
     expiry_line = f"**有效期至**：{expires_at[:10]}" if expires_at else ""
@@ -658,14 +658,19 @@ def _print_forwardable_message(
         "",
         "**激活步骤**（建议在 Claude Code / 龙虾 等 agent runtime 里执行）：",
         "",
+        "命令行激活会调用 `uvx lovstudio-skill-helper`。如不想在本机运行 helper，可直接用网页绑定：https://lovstudio.ai/license/redeem",
+        "",
         "```bash",
         "# 1. 安装 lovstudio CLI（一次性）",
         "npm i -g lovstudio",
         "",
-        "# 2. 激活 license（本地绑定，只需一次）",
+        "# 2. 安装 uv（提供 uvx；命令行激活需要）",
+        "# 见：https://docs.astral.sh/uv/getting-started/installation/",
+        "",
+        "# 3. 激活 license（本地绑定，只需一次）",
         f"lovstudio license activate {license_key}",
         "",
-        "# 3. 安装 skill",
+        "# 4. 安装 skill",
         install_step,
         "```",
         "",
@@ -673,8 +678,6 @@ def _print_forwardable_message(
         "",
         "有问题可以群里反馈或直接找我，更多内容见 https://lovstudio.ai。",
         "感谢您的支持，也欢迎推荐给身边的朋友（推荐返佣 30%）！",
-        "",
-        "也可在网页上把 license 绑定到账号：https://lovstudio.ai/license/redeem",
         "── 复制结束 ──",
     ])
     print("\n".join(lines))

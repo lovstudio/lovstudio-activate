@@ -304,8 +304,7 @@ def _manifest_for(skill_name: str) -> SkillManifest:
             mark = "✓" if (c / "MANIFEST.enc.json").exists() else "✗"
             print(f"    {mark} {c}", file=sys.stderr)
         print(f"  install via either:", file=sys.stderr)
-        print(f"    npx skills add lovstudio/skills                              # full marketplace", file=sys.stderr)
-        print(f"    npx skills add lovstudio/skills --skill lovstudio:{skill_name}   # just this one", file=sys.stderr)
+        print(f"    npx lovstudio skills add {skill_name}   # 登录并兑换后安装", file=sys.stderr)
         sys.exit(2)
     return SkillManifest(d)
 
@@ -321,16 +320,35 @@ def _read_skill_version(manifest: SkillManifest) -> str:
 
 
 def _fetch_key(skill_name: str, version: str) -> bytes:
-    """Fetch the AES key for `skill_name`, trying every stacked license.
+    """Fetch the AES key for `skill_name` through account or license access.
 
     Strategy:
-      1. Pick the license that advertises entitlement locally (fast path).
-      2. If none advertise it, still try each license — the server is authoritative
+      1. Prefer the signed-in account entitlement created by a Credits purchase.
+      2. Fall back to every stacked license for legacy license-key users.
+      3. If none advertise it, still try each license — the server is authoritative
          and the local cache may be stale after an admin top-up without heartbeat.
-      3. If all keys come back 401/403, prompt the user to add another key.
+      4. If all keys come back 401/403, prompt the user to add another key.
     """
+    try:
+        session = auth.refresh_if_needed()
+        try:
+            resp = api.account_skill_key(session["access_token"], skill_name, version)
+            return bytes.fromhex(resp["decryption_key"])
+        except api.ApiError as e:
+            # A signed-in account without this entitlement can still have a
+            # legacy license key on the same machine. Continue to that path.
+            if e.status not in (401, 403, 404):
+                print(f"error: account skill key failed — {e.message}", file=sys.stderr)
+                sys.exit(1)
+    except auth.AuthError:
+        pass
+
     did = config.device_id()
-    licenses = _require_licenses()
+    licenses = config.load_licenses()
+    if not licenses:
+        print(f"error: no access to '{skill_name}'.", file=sys.stderr)
+        print(f"  sign in and redeem it first: npx lovstudio skills add {skill_name}", file=sys.stderr)
+        sys.exit(1)
 
     tried: set[str] = set()
     # Fast path: any key that already advertises this skill locally.
@@ -418,7 +436,6 @@ def cmd_decrypt(args) -> int:
     other file declared in the skill's MANIFEST. The path must match exactly
     what `pack_dir` recorded (relative to src/, forward slashes).
     """
-    _require_licenses()
     manifest = _manifest_for(args.skill_name)
     version = _read_skill_version(manifest)
     key = _fetch_key(args.skill_name, version)
@@ -434,7 +451,6 @@ def cmd_decrypt(args) -> int:
 
 def cmd_exec(args) -> int:
     """Decrypt a script file to a tmpdir, execute it, then clean up."""
-    _require_licenses()
     manifest = _manifest_for(args.skill_name)
     version = _read_skill_version(manifest)
     key = _fetch_key(args.skill_name, version)

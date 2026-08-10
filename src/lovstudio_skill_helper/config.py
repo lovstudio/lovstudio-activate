@@ -29,6 +29,7 @@ DEVICE_FILE = CONFIG_DIR / "device.yml"
 # Default Edge Function endpoint. Overridable via env for dev/test.
 # Points at the lovstudio.ai web project (merged license system).
 DEFAULT_API_BASE = "https://nouchjcfeoobplxkwasg.supabase.co/functions/v1"
+DEFAULT_WEB_BASE = "https://lovstudio.ai"
 # Default anon key — Edge Functions require it for JWT gate, even though
 # we enforce real auth via HMAC inside the function body.
 DEFAULT_ANON_KEY = (
@@ -41,6 +42,10 @@ DEFAULT_ANON_KEY = (
 
 def api_base() -> str:
     return os.environ.get("LOVSTUDIO_API_BASE", DEFAULT_API_BASE)
+
+
+def web_base() -> str:
+    return os.environ.get("LOVSTUDIO_WEB_URL", DEFAULT_WEB_BASE).rstrip("/")
 
 
 def rest_base() -> str:

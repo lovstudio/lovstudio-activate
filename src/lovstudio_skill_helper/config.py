@@ -7,8 +7,9 @@
                                    #                 entitled_skills, last_heartbeat_at }, … ]
                                    # Legacy v1 (flat single license) is auto-migrated on read.
 
-Encrypted skill bundles live under ~/.claude/skills/<name>/ (or the
-`lovstudio-<name>/` variant), placed there by `npx skills add ...`.
+Encrypted skill bundles normally live under the installer-owned canonical
+directory `~/.agents/skills/<runtime-name>/`, with optional Agent-specific
+copies or links such as `~/.codex/skills/` and `~/.claude/skills/`.
 
 Decryption keys are NEVER persisted here. They live in the running CLI's
 memory for the duration of one `decrypt` or `exec` invocation, then die.
@@ -19,6 +20,7 @@ import os
 import platform
 import uuid
 from pathlib import Path
+from typing import Optional
 
 import yaml
 
@@ -29,6 +31,7 @@ DEVICE_FILE = CONFIG_DIR / "device.yml"
 # Default Edge Function endpoint. Overridable via env for dev/test.
 # Points at the lovstudio.ai web project (merged license system).
 DEFAULT_API_BASE = "https://nouchjcfeoobplxkwasg.supabase.co/functions/v1"
+DEFAULT_WEB_BASE = "https://lovstudio.ai"
 # Default anon key — Edge Functions require it for JWT gate, even though
 # we enforce real auth via HMAC inside the function body.
 DEFAULT_ANON_KEY = (
@@ -41,6 +44,10 @@ DEFAULT_ANON_KEY = (
 
 def api_base() -> str:
     return os.environ.get("LOVSTUDIO_API_BASE", DEFAULT_API_BASE)
+
+
+def web_base() -> str:
+    return os.environ.get("LOVSTUDIO_WEB_URL", DEFAULT_WEB_BASE).rstrip("/")
 
 
 def rest_base() -> str:
@@ -177,48 +184,75 @@ def device_info() -> dict:
     }
 
 
-def skill_dir_candidates(skill_name: str) -> list[Path]:
-    """Search candidates for an encrypted skill bundle, in priority order.
+def _skill_name_candidates(skill_name: str) -> list[str]:
+    """Return current runtime, product, and legacy directory-name aliases."""
+    raw = skill_name.strip()
+    if raw.startswith("lov-"):
+        product = raw[len("lov-"):]
+    elif raw.startswith("lovstudio-"):
+        product = raw[len("lovstudio-"):]
+    elif raw.startswith("lovstudio:"):
+        product = raw[len("lovstudio:"):]
+    else:
+        product = raw
 
-    1. ~/.claude/skills/<name>/                ← `npx skills add` with bare name
-    2. ~/.claude/skills/lovstudio-<name>/      ← `npx skills add` with namespaced name
-                                                  (free skills + paid skills both land here)
-    """
+    ordered = [f"lov-{product}", product, f"lovstudio-{product}", f"lovstudio:{product}"]
+    if raw not in ordered:
+        ordered.insert(0, raw)
+    return list(dict.fromkeys(name for name in ordered if name))
+
+
+def skill_roots(home: Optional[Path] = None) -> list[Path]:
+    """Installer canonical root first, followed by known Agent-specific roots."""
+    root = home or Path.home()
     return [
-        Path.home() / ".claude" / "skills" / skill_name,
-        Path.home() / ".claude" / "skills" / f"lovstudio-{skill_name}",
+        root / ".agents" / "skills",
+        root / ".codex" / "skills",
+        root / ".claude" / "skills",
+        root / ".config" / "opencode" / "skills",
+        root / ".gemini" / "skills",
+        root / ".cursor" / "skills",
+        root / ".windsurf" / "skills",
     ]
 
 
-def skill_dir(skill_name: str) -> Path:
+def skill_dir_candidates(skill_name: str, home: Optional[Path] = None) -> list[Path]:
+    """Search current installer and legacy Agent locations in priority order."""
+    names = _skill_name_candidates(skill_name)
+    return [root / name for root in skill_roots(home) for name in names]
+
+
+def skill_dir(skill_name: str, home: Optional[Path] = None) -> Path:
     """Locate an encrypted skill bundle, returning the first candidate that
     contains a MANIFEST.enc.json. Falls back to the primary path so callers
     can render a sane error message.
     """
-    for c in skill_dir_candidates(skill_name):
+    for c in skill_dir_candidates(skill_name, home):
         if (c / "MANIFEST.enc.json").exists():
             return c
-    return skill_dir_candidates(skill_name)[0]
+    return skill_dir_candidates(skill_name, home)[0]
 
 
-def installed_skills() -> list[str]:
-    """List names of locally-installed encrypted skills (any dir under
-    ~/.claude/skills containing MANIFEST.enc.json). Strips the `lovstudio-`
-    prefix so the user sees the canonical name.
-    """
-    root = Path.home() / ".claude" / "skills"
-    if not root.is_dir():
-        return []
+def installed_skills(home: Optional[Path] = None) -> list[str]:
+    """List canonical product names from encrypted manifests across Agent roots."""
+    import json
+
     names: set[str] = set()
-    for child in root.iterdir():
-        if not child.is_dir():
+    for root in skill_roots(home):
+        if not root.is_dir():
             continue
-        if not (child / "MANIFEST.enc.json").exists():
-            continue
-        name = child.name
-        if name.startswith("lovstudio-"):
-            name = name[len("lovstudio-"):]
-        names.add(name)
+        for child in root.iterdir():
+            manifest = child / "MANIFEST.enc.json"
+            if not child.is_dir() or not manifest.exists():
+                continue
+            try:
+                data = json.loads(manifest.read_text())
+            except Exception:
+                data = {}
+            canonical = str(data.get("skill_name") or "").strip()
+            if not canonical:
+                canonical = _skill_name_candidates(child.name)[1]
+            names.add(canonical)
     return sorted(names)
 
 

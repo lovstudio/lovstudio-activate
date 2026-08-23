@@ -64,6 +64,40 @@ class ApiError(RuntimeError):
         self.message = message
 
 
+def web_call(path: str, body: dict, bearer: str, timeout: int = 15) -> dict:
+    """Call an authenticated Lovstudio web API route with the account JWT."""
+    headers = {
+        "content-type": "application/json",
+        "accept": "application/json",
+        "authorization": f"Bearer {bearer}",
+    }
+    req = urllib.request.Request(
+        f"{config.web_base()}{path}",
+        data=json.dumps(body).encode(),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        try:
+            payload = json.loads(e.read())
+            message = payload.get("error") or payload.get("message") or "unknown error"
+        except Exception:
+            message = "unknown error"
+        raise ApiError(e.code, message) from None
+
+
+def account_skill_key(bearer: str, skill_name: str, skill_version: str) -> dict:
+    """Fetch a paid Skill key through the account entitlement bridge."""
+    return web_call(
+        "/api/skills/key",
+        {"skill_name": skill_name, "skill_version": skill_version},
+        bearer,
+    )
+
+
 def call(path: str, body: dict, timeout: int = 15, bearer: str | None = None) -> dict:
     # A user JWT (from device-flow login) is also a valid Supabase JWT, so it
     # clears the Functions gateway. If we don't have one, fall back to anon.

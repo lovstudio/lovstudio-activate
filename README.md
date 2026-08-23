@@ -40,9 +40,10 @@ lovstudio-skill-helper deactivate       # wipe local license
 
 ## How it works
 
-Paid skills ship as AES-256-GCM ciphertext under the agent skill directory
-created by `npx skills add ...`, normally `~/.agents/skills/lovstudio-<name>/`
-with agent-specific copies or links such as `~/.claude/skills/...`. Each call
+Paid skills ship as AES-256-GCM ciphertext under the installer-owned directory
+created by `npx skills add ...`, normally `~/.agents/skills/lov-<name>/`, with
+optional Agent-specific copies or links such as `~/.codex/skills/...` and
+`~/.claude/skills/...`. Current and legacy directory names remain discoverable. Each call
 to `decrypt` / `exec`:
 
 1. Uses the signed-in Lovstudio account entitlement created by a Credits redemption.

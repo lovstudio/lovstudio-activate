@@ -438,7 +438,8 @@ def cmd_decrypt(args) -> int:
     """
     manifest = _manifest_for(args.skill_name)
     version = _read_skill_version(manifest)
-    key = _fetch_key(args.skill_name, version)
+    canonical_name = manifest.skill_name or args.skill_name
+    key = _fetch_key(canonical_name, version)
     rel = args.rel_path or "SKILL.md"
     if rel not in manifest.files:
         print(f"error: '{rel}' not in manifest for '{args.skill_name}'.", file=sys.stderr)
@@ -453,7 +454,8 @@ def cmd_exec(args) -> int:
     """Decrypt a script file to a tmpdir, execute it, then clean up."""
     manifest = _manifest_for(args.skill_name)
     version = _read_skill_version(manifest)
-    key = _fetch_key(args.skill_name, version)
+    canonical_name = manifest.skill_name or args.skill_name
+    key = _fetch_key(canonical_name, version)
 
     if args.script_path not in manifest.files:
         print(f"error: '{args.script_path}' not in manifest.", file=sys.stderr)

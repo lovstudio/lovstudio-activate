@@ -163,7 +163,7 @@ wheels = [
 
 [[package]]
 name = "lovstudio-skill-helper"
-version = "0.9.1"
+version = "0.9.3"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography" },

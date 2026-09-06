@@ -15,7 +15,10 @@ import time
 import urllib.error
 import urllib.request
 
-from . import config
+from . import __version__, config
+
+
+USER_AGENT = f"lovstudio-skill-helper/{__version__} (+https://lovstudio.ai)"
 
 
 def hmac_hex(key_hex: str, message: str) -> str:
@@ -58,15 +61,49 @@ def signed_payload(
 
 
 class ApiError(RuntimeError):
-    def __init__(self, status: int, message: str):
+    def __init__(self, status: int, message: str, *, code: str | None = None):
         super().__init__(f"HTTP {status}: {message}")
         self.status = status
         self.message = message
+        self.code = code or message
+
+    @classmethod
+    def from_http(cls, error: urllib.error.HTTPError) -> ApiError:
+        # Never print the response body: a proxy may return HTML or echo secrets.
+        body = error.read(65536).decode("utf-8", errors="replace")
+        try:
+            payload = json.loads(body)
+        except ValueError:
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        headers = error.headers or {}
+        ray = headers.get("cf-ray") or payload.get("ray_id")
+        code = payload.get("error") or payload.get("message")
+        if payload.get("cloudflare_error") or (
+            ray and ("cloudflare" in body.lower() or "1010" in body)
+        ) or headers.get("cf-mitigated") == "challenge":
+            name = payload.get("error_name") or "request_blocked"
+            number = payload.get("error_code")
+            message = f"Cloudflare HTTP {error.code}: {name}"
+            if number:
+                message += f" (Error {number})"
+            message += "; website protection blocked the request; entitlement was not checked"
+            code = "website_protection_blocked"
+        elif isinstance(code, str) and code:
+            message = code
+        else:
+            code = "unexpected_http_response"
+            message = f"unexpected HTTP {error.code} response; entitlement could not be verified"
+        if ray:
+            message += f"; Ray ID: {str(ray)[:100]}"
+        return cls(error.code, message, code=code)
 
 
 def web_call(path: str, body: dict, bearer: str, timeout: int = 15) -> dict:
     """Call an authenticated Lovstudio web API route with the account JWT."""
     headers = {
+        "user-agent": USER_AGENT,
         "content-type": "application/json",
         "accept": "application/json",
         "authorization": f"Bearer {bearer}",
@@ -81,12 +118,7 @@ def web_call(path: str, body: dict, bearer: str, timeout: int = 15) -> dict:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read())
     except urllib.error.HTTPError as e:
-        try:
-            payload = json.loads(e.read())
-            message = payload.get("error") or payload.get("message") or "unknown error"
-        except Exception:
-            message = "unknown error"
-        raise ApiError(e.code, message) from None
+        raise ApiError.from_http(e) from None
 
 
 def account_skill_key(bearer: str, skill_name: str, skill_version: str) -> dict:
@@ -102,6 +134,7 @@ def call(path: str, body: dict, timeout: int = 15, bearer: str | None = None) ->
     # A user JWT (from device-flow login) is also a valid Supabase JWT, so it
     # clears the Functions gateway. If we don't have one, fall back to anon.
     headers = {
+        "user-agent": USER_AGENT,
         "content-type": "application/json",
         "apikey": config.anon_key(),
         "authorization": f"Bearer {bearer or config.anon_key()}",
@@ -115,11 +148,7 @@ def call(path: str, body: dict, timeout: int = 15, bearer: str | None = None) ->
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read())
     except urllib.error.HTTPError as e:
-        try:
-            err_body = json.loads(e.read()).get("error", "unknown error")
-        except Exception:
-            err_body = "unknown error"
-        raise ApiError(e.code, err_body) from None
+        raise ApiError.from_http(e) from None
 
 
 def activate(license_key: str, device_id: str, bearer: str | None = None) -> dict:
@@ -177,6 +206,7 @@ def list_catalog(timeout: int = 15) -> list[dict]:
     req = urllib.request.Request(
         url,
         headers={
+            "user-agent": USER_AGENT,
             "apikey": config.anon_key(),
             "authorization": f"Bearer {config.anon_key()}",
         },
@@ -185,4 +215,4 @@ def list_catalog(timeout: int = 15) -> list[dict]:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read())
     except urllib.error.HTTPError as e:
-        raise ApiError(e.code, "catalog fetch failed") from None
+        raise ApiError.from_http(e) from None

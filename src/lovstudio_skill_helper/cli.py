@@ -327,7 +327,7 @@ def _fetch_key(skill_name: str, version: str) -> bytes:
       2. Fall back to every stacked license for legacy license-key users.
       3. If none advertise it, still try each license — the server is authoritative
          and the local cache may be stale after an admin top-up without heartbeat.
-      4. If all keys come back 401/403, prompt the user to add another key.
+      4. Only explicit entitlement denials prompt the user to add another key.
     """
     try:
         session = auth.refresh_if_needed()
@@ -337,7 +337,10 @@ def _fetch_key(skill_name: str, version: str) -> bytes:
         except api.ApiError as e:
             # A signed-in account without this entitlement can still have a
             # legacy license key on the same machine. Continue to that path.
-            if e.status not in (401, 403, 404):
+            if (e.status, e.code) not in {
+                (401, "unauthorized"), (401, "bearer_required"),
+                (403, "skill_not_owned"),
+            }:
                 print(f"error: account skill key failed — {e.message}", file=sys.stderr)
                 sys.exit(1)
     except auth.AuthError:
@@ -370,15 +373,16 @@ def _fetch_key(skill_name: str, version: str) -> bytes:
             resp = api.skill_keys(lic["license_key"], did, skill_name, version)
         except api.ApiError as e:
             last_err = e
-            # 401/403 → this key doesn't cover this skill. Try the next one.
-            # Anything else → hard-fail now (network, server error, bad nonce).
-            if e.status in (401, 403):
+            # A 403 may come from website protection before auth ever runs.
+            if e.status == 403 and e.code in {
+                "not entitled to this skill", "license revoked", "license expired",
+            }:
                 continue
             print(f"error: skill_keys failed — {e.message}", file=sys.stderr)
             sys.exit(1)
         return bytes.fromhex(resp["decryption_key"])
 
-    # Every stacked key returned 401/403. Offer a recovery path.
+    # Every stacked key explicitly denied access. Offer a recovery path.
     if last_err and last_err.status in (401, 403) and sys.stdin.isatty():
         new_key = _prompt_not_entitled(skill_name)
         if new_key is None:
@@ -495,8 +499,7 @@ def cmd_call(args) -> int:
         print("error: --input must be a JSON object", file=sys.stderr)
         return 2
 
-    # Try each stacked license. Same fallthrough rule as `_fetch_key`:
-    # 401/403 means "this key doesn't cover this skill"; try the next key.
+    # Try each stacked license only after explicit entitlement denials.
     did = config.device_id()
     preferred = _pick_license_for(args.skill_name, licenses)
     candidates: list[dict] = [preferred] if preferred else []
@@ -513,7 +516,9 @@ def cmd_call(args) -> int:
             )
         except api.ApiError as e:
             last_err = e
-            if e.status in (401, 403):
+            if e.status == 403 and e.code in {
+                "not entitled to this skill", "license revoked", "license expired",
+            }:
                 continue
             print(f"error: {e.message}", file=sys.stderr)
             return 1

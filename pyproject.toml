@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lovstudio-skill-helper"
-version = "0.9.3"
+version = "0.9.4"
 description = "Lovstudio skill helper — decrypt paid Skills after account or legacy entitlement verification. Decryption keys never touch disk."
 readme = "README.md"
 requires-python = ">=3.9"

@@ -23,6 +23,7 @@ from typing import Any
 import yaml
 
 from . import config
+from .api import USER_AGENT
 
 AUTH_FILE = config.CONFIG_DIR / "auth.yml"
 POLL_MAX_SECONDS = 600
@@ -34,7 +35,7 @@ class AuthError(RuntimeError):
 
 
 def _post(url: str, body: dict, *, anon: str | None = None, bearer: str | None = None) -> dict:
-    headers = {"content-type": "application/json"}
+    headers = {"content-type": "application/json", "user-agent": USER_AGENT}
     if anon:
         headers["apikey"] = anon
         headers["authorization"] = f"Bearer {anon}"
